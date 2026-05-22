@@ -36,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reponse'])) {
     <h1>Résultat du Test</h1>
     <div class="score"><?php echo $score; ?> / <?php echo $totalQuestions; ?></div>
     <a href="qcm.php">Relancer un test</a>
+    <a href="connexion.php?action=logout" style="color: red; font-weight: bold;">Se déconnecter</a>
 </div>
 </body>
 </html>

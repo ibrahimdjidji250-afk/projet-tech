@@ -40,6 +40,7 @@ $questions = $_SESSION['qcm_questions'];
 
 <div class="container">
     <h1>Passage du QCM</h1>
+    <a href="connexion.php?action=logout" style="color: red; font-weight: bold;">Se déconnecter</a>
     <div id="warning" class="warning-box">Attention ! Changement d'onglet détecté.</div>
     
     <form action="validation.php" method="POST">
