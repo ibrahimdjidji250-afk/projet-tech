@@ -1,7 +1,7 @@
 <?php
 // Configuration de la connexion
 $host = 'localhost';
-$dbname = 'votre_bdd';
+$dbname = 'qcm1';
 $user = 'root';
 $pass = '';
 
