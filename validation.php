@@ -1,6 +1,6 @@
 <?php
 $host = 'localhost';
-$dbname = '';
+$dbname = 'qcm1';
 $user = 'root';
 $pass = '';
 
