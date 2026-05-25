@@ -5,7 +5,7 @@ session_start();
 $host = 'localhost';
 $dbname = 'qcm1';
 $user = 'root';
-$pass = '';
+$pass = 'root';
 
 try {
     $db = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $user, $pass, [

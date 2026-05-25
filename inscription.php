@@ -3,7 +3,7 @@ session_start();
 $host = 'localhost';
 $dbname = 'qcm1';
 $user = 'root';
-$pass = '';
+$pass = 'root'; // Mot de passe par défaut MAMP
 
 $message = '';
 $status = '';
@@ -22,24 +22,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email']);
     $password = $_POST['mot_de_passe'];
 
-    // 1. Vérifier si l'email existe déjà (Contrainte email unique)
-    $stmtCheck = $db->prepare("SELECT id_utilisateur FROM utilisateurs WHERE email = ?");
+    // 1. Correction de la requête : 'id' au lieu de 'id_utilisateur' pour correspondre à la BDD
+    $stmtCheck = $db->prepare("SELECT id FROM utilisateurs WHERE email = ?");
     $stmtCheck->execute([$email]);
     
     if ($stmtCheck->fetch()) {
         $message = "Cette adresse email est déjà utilisée pour un autre compte.";
         $status = "error";
     } else {
-        // 2. Sécuriser le mot de passe (Contrainte hash)
+        // 2. Sécuriser le mot de passe (Contrainte hash du cahier des charges)
         $passwordHash = password_hash($password, PASSWORD_DEFAULT);
 
-        // 3. Insérer l'utilisateur
+        // 3. Insertion dans la table avec les colonnes exactes de la BDD (nom, prenom, email, mot_de_passe)
+        // Par défaut, le rôle n'est pas spécifié pour qu'il soit un 'user' basique en BDD
         $stmtInsert = $db->prepare("INSERT INTO utilisateurs (nom, prenom, email, mot_de_passe) VALUES (?, ?, ?, ?)");
-        if ($stmtInsert->execute([$nom, $prenom, $email, $passwordHash])) {
-            $message = "Compte créé avec succès ! Vous pouvez maintenant vous connecter.";
-            $status = "success";
-        } else {
-            $message = "Une erreur est survenue lors de l'inscription.";
+        
+        try {
+            if ($stmtInsert->execute([$nom, $prenom, $email, $passwordHash])) {
+                $message = "Compte créé avec succès ! Vous pouvez maintenant vous connecter.";
+                $status = "success";
+            } else {
+                $message = "Une erreur est survenue lors de l'inscription.";
+                $status = "error";
+            }
+        } catch (PDOException $ex) {
+            $message = "Erreur technique lors de l'enregistrement : " . $ex->getMessage();
             $status = "error";
         }
     }
@@ -49,6 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>3.1 Inscription</title>
     <style>
         body { font-family: Arial, sans-serif; background-color: #f4f6f9; padding: 40px; }

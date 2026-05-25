@@ -5,7 +5,7 @@ session_start();
 $host = 'localhost';
 $dbname = 'qcm1';
 $user = 'root';
-$pass = '';
+$pass = 'root'; // Requis pour MAMP
 
 $error = '';
 
@@ -37,19 +37,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Vérification de l'existence de l'utilisateur et du mot de passe haché
     if ($user && password_verify($password, $user['mot_de_passe'])) {
         
-        // Vérifier si l'administrateur a bloqué cet utilisateur
-        if (isset($user['est_bloque']) && $user['est_bloque'] == 1) {
-            $error = "❌ Votre compte a été bloqué par un administrateur.";
-        } else {
-            // Création de la session utilisateur (Section 3.2)
-            $_SESSION['user_id'] = $user['id_utilisateur'];
-            $_SESSION['user_nom'] = $user['nom'];
-            $_SESSION['user_prenom'] = $user['prenom'];
+        // Stockage des informations essentielles de l'utilisateur en Session
+        // Correction ici : Utilisation de 'id' conformément à ta base de données
+        $_SESSION['user_id'] = $user['id'];
+        $_SESSION['user_nom'] = $user['nom'];
+        $_SESSION['user_prenom'] = $user['prenom'];
+        $_SESSION['user_role'] = $user['role']; // Permet de savoir si c'est un 'user' ou un 'admin'
 
-            // Redirection automatique vers le QCM une fois connecté
-            header('Location: qcm.php');
-            exit();
-        }
+        // Redirection automatique vers l'index du QCM une fois connecté
+        header('Location: index.php');
+        exit();
+        
     } else {
         $error = "❌ Email ou mot de passe incorrect.";
     }
