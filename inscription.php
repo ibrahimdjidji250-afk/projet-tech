@@ -1,9 +1,11 @@
 <?php
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 session_start();
 $host = 'localhost';
 $dbname = 'qcm1';
 $user = 'root';
-$pass = '';
+$pass = 'root';
 
 $message = '';
 $status = '';
@@ -23,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['mot_de_passe'];
 
     // 1. Vérifier si l'email existe déjà (Contrainte email unique)
-    $stmtCheck = $db->prepare("SELECT id_utilisateur FROM utilisateurs WHERE email = ?");
+   $stmtCheck = $db->prepare("SELECT id FROM utilisateurs WHERE email = ?");
     $stmtCheck->execute([$email]);
     
     if ($stmtCheck->fetch()) {
