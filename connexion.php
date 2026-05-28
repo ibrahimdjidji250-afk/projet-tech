@@ -10,6 +10,14 @@ $conn = mysqli_connect($host, $user, $pass, $dbname);
 if (!$conn) { die('Erreur de connexion : ' . mysqli_connect_error()); }
 mysqli_set_charset($conn, 'utf8mb4');
 
+// Liste blanche des admins
+$emails_admins = [
+    'Alioudiarrapro@gmail.com',
+    'Ibrahimdjidji250@gmail.com',
+    'Fommarc5@gmail.com',
+    'djamaldinefathidouga@gmail.com'
+];
+
 // S'il a déjà un cookie de connexion et n'est pas en session, on le connecte automatiquement
 if (!isset($_SESSION['user_id']) && isset($_COOKIE['user_email'])) {
     $cookie_email = mysqli_real_escape_string($conn, $_COOKIE['user_email']);
@@ -17,11 +25,13 @@ if (!isset($_SESSION['user_id']) && isset($_COOKIE['user_email'])) {
     $resultat = mysqli_query($conn, $sql);
     $user = mysqli_fetch_assoc($resultat);
     if ($user) {
-        $_SESSION['user_id'] = $user['id'];
-        $_SESSION['user_nom'] = $user['nom'];
+        $_SESSION['user_id']     = $user['id'];
+        $_SESSION['user_nom']    = $user['nom'];
         $_SESSION['user_prenom'] = $user['prenom'];
         $_SESSION['user_email'] = $user['email'];
         $_SESSION['user_role'] = $user['role'];
+        $_SESSION['user_email']  = $user['email'];
+        $_SESSION['user_role']   = in_array($user['email'], $emails_admins) ? 'admin' : 'user';
     }
 }
 
@@ -31,6 +41,8 @@ if (isset($_SESSION['user_id']) && !isset($_GET['action'])) {
         $destination = $_SESSION['redirect_to'];
         unset($_SESSION['redirect_to']);
         header("Location: " . $destination);
+    if ($_SESSION['user_role'] === 'admin') {
+        header('Location: admin.php');
     } else {
         header('Location: selection_theme.php');
     }
@@ -40,7 +52,6 @@ if (isset($_SESSION['user_id']) && !isset($_GET['action'])) {
 // Gestion de la déconnexion
 if (isset($_GET['action']) && $_GET['action'] === 'logout') {
     session_destroy();
-    // On détruit le cookie en lui donnant une date expirée
     setcookie('user_email', '', time() - 3600, '/');
     header('Location: connexion.php?logout=success');
     exit();
@@ -49,12 +60,12 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = mysqli_real_escape_string($conn, trim($_POST['email']));
+    $email    = mysqli_real_escape_string($conn, trim($_POST['email']));
     $password = $_POST['mot_de_passe'];
 
-    $sql = "SELECT * FROM utilisateurs WHERE email = '$email'";
+    $sql      = "SELECT * FROM utilisateurs WHERE email = '$email'";
     $resultat = mysqli_query($conn, $sql);
-    $user = mysqli_fetch_assoc($resultat);
+    $user     = mysqli_fetch_assoc($resultat);
 
     if ($user && password_verify($password, $user['mot_de_passe'])) {
         // Stockage des informations essentielles de l'utilisateur en Session
@@ -65,6 +76,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['user_role'] = $user['role']; 
         
         // Si la case "Se souvenir de moi" est cochée, on crée un cookie pour 30 jours
+        $_SESSION['user_id']     = $user['id'];
+        $_SESSION['user_nom']    = $user['nom'];
+        $_SESSION['user_prenom'] = $user['prenom'];
+        $_SESSION['user_email']  = $user['email'];
+        $_SESSION['user_role']   = in_array($user['email'], $emails_admins) ? 'admin' : 'user';
+
+        // Cookie "Se souvenir de moi"
         if (isset($_POST['remember_me'])) {
             setcookie('user_email', $user['email'], time() + (30 * 24 * 60 * 60), '/');
         }
@@ -74,6 +92,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $destination = $_SESSION['redirect_to'];
             unset($_SESSION['redirect_to']); // Nettoyage de la variable
             header("Location: " . $destination);
+        // Redirection selon le rôle
+        if ($_SESSION['user_role'] === 'admin') {
+            header('Location: admin.php');
         } else {
             header('Location: selection_theme.php');
         }
@@ -100,15 +121,15 @@ mysqli_close($conn);
         button { width: 100%; padding: 14px; background: #111; color: white; border: none; border-radius: 6px; margin-top: 20px; cursor: pointer; font-weight: 600; }
         button:hover { background: #6c63ff; }
         .alert { padding: 10px; border-radius: 6px; margin-bottom: 15px; text-align: center; font-weight: bold; }
-        .error { background: #f8d7da; color: #721c24; }
+        .error   { background: #f8d7da; color: #721c24; }
         .success { background: #d4edda; color: #155724; }
     </style>
 </head>
 <body>
 <div class="login-box">
     <h1>Connexion</h1>
-    <?php if(!empty($error)): ?><div class="alert error"><?php echo $error; ?></div><?php endif; ?>
-    <?php if(isset($_GET['logout'])): ?><div class="alert success">✓ Déconnecté.</div><?php endif; ?>
+    <?php if (!empty($error)): ?><div class="alert error"><?php echo $error; ?></div><?php endif; ?>
+    <?php if (isset($_GET['logout'])): ?><div class="alert success">✓ Déconnecté.</div><?php endif; ?>
 
     <form action="connexion.php" method="POST">
         <label>Adresse Email :</label>
