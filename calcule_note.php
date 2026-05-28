@@ -1,4 +1,4 @@
-<?php
+ <?php
 session_start();
 
 // 1. Connexion propre à la base de données en PDO uniquement
