@@ -1,9 +1,13 @@
 <?php
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 session_start();
 $host = 'localhost';
 $dbname = 'qcm1';
 $user = 'root';
+
 $pass = 'root'; // Mot de passe par défaut MAMP
+$pass = 'root';
 
 $message = '';
 $status = '';
@@ -24,6 +28,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // 1. Correction de la requête : 'id' au lieu de 'id_utilisateur' pour correspondre à la BDD
     $stmtCheck = $db->prepare("SELECT id FROM utilisateurs WHERE email = ?");
+    // 1. Vérifier si l'email existe déjà (Contrainte email unique)
+   $stmtCheck = $db->prepare("SELECT id FROM utilisateurs WHERE email = ?");
     $stmtCheck->execute([$email]);
     
     if ($stmtCheck->fetch()) {

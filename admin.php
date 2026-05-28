@@ -1,232 +1,266 @@
 <?php
 session_start();
-$db = new PDO("mysql:host=localhost;dbname=qcm1;charset=utf8", "root", "", [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 
-$message_success = "";
+// 1. SÉCURITÉ & LISTE BLANCHE DES ADMINS
+$emails_admins = [
+    'alioudiarrapro@gmail.com',
+    'ibrahimdjidji250@gmail.com',
+    'fommarc5@gmail.com',
+    'djamaldinefathidouga@gmail.com'
+];  
 
-// ==========================================
-// TRAITEMENTS DE LA GESTION DES UTILISATEURS
-// ==========================================
+// Vérification : L'utilisateur est-il connecté ?
+if (!isset($_SESSION['user_id']) || !isset($_SESSION['user_email'])) {
+    // On mémorise la page demandée pour y retourner après la connexion
+    $_SESSION['redirect_to'] = 'admin.php'; 
+    header('Location: connexion.php');
+    exit();
+}
+$email_session_verif = strtolower(trim($_SESSION['user_email']));
 
-// Supprimer un utilisateur (9.1)
+if (in_array($email_session_verif, $emails_admins)) {
+    $_SESSION['user_role'] = 'admin';
+} else {
+    $_SESSION['user_role'] = 'user';
+}
+
+if ($_SESSION['user_role'] !== 'admin') {
+    die("<h1 style='font-family:sans-serif; text-align:center; margin-top:50px; color:#e44d26;'>Accès refusé. Vous devez être administrateur pour voir cette page. <a href='selection_theme.php'>Retour</a></h1>");
+}
+
+// 2. CONNEXION À LA BASE DE DONNÉES
+$conn = mysqli_connect('localhost', 'root', 'root', 'qcm1');
+if (!$conn) { 
+    die('Erreur de connexion : ' . mysqli_connect_error()); 
+}
+mysqli_set_charset($conn, 'utf8mb4');
+
+if (isset($_SESSION['msg_success'])) {
+    $message_success = $_SESSION['msg_success'];
+    unset($_SESSION['msg_success']);
+} else {
+    $message_success = "";
+}
+
+// 3. TRAITEMENTS ACTIONS
+
+// ACTION AJOUTÉE : Modifier le rôle d'un utilisateur (Exigence du PDF)
+if (isset($_GET['action']) && $_GET['action'] === 'changer_role') {
+    $id = (int)$_GET['id'];
+    $role_actuel = mysqli_real_escape_string($conn, $_GET['role']);
+    $nouveau_role = ($role_actuel === 'admin') ? 'user' : 'admin';
+    
+    $sql = "UPDATE utilisateurs SET role = '$nouveau_role' WHERE id = $id";
+    if (mysqli_query($conn, $sql)) {
+        $_SESSION['msg_success'] = "Rôle de l'utilisateur mis à jour avec succès.";
+    }
+    header("Location: admin.php");
+    exit();
+}
+
+// Supprimer un utilisateur
 if (isset($_GET['action']) && $_GET['action'] === 'suppr_user') {
     $id = (int)$_GET['id'];
-    $stmt = $db->prepare("DELETE FROM utilisateurs WHERE id_utilisateur = ?");
-    $stmt->execute([$id]);
-    $message_success = "Utilisateur supprimé avec succès.";
+    $sql = "DELETE FROM utilisateurs WHERE id = $id";
+    if (mysqli_query($conn, $sql)) {
+        $_SESSION['msg_success'] = "Utilisateur supprimé avec succès.";
+    }
+    header("Location: admin.php");
+    exit();
 }
 
-// Bloquer / Débloquer un utilisateur (9.1)
-if (isset($_GET['action']) && $_GET['action'] === 'toggle_block') {
-    $id = (int)$_GET['id'];
-    $status = (int)$_GET['status']; // 1 pour bloquer, 0 pour débloquer
-    $stmt = $db->prepare("UPDATE utilisateurs SET est_bloque = ? WHERE id_utilisateur = ?");
-    $stmt->execute([$status, $id]);
-    $message_success = ($status === 1) ? "Utilisateur bloqué." : "Utilisateur débloqué.";
-}
-
-// ==========================================
-// TRAITEMENTS DE LA GESTION DES QUESTIONS
-// ==========================================
-
-// Ajouter une question (9.2)
+// Ajouter une question
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajouter_question'])) {
-    $enonce = trim($_POST['enonce']);
-    $reponses = $_POST['reponses']; 
+    $question = mysqli_real_escape_string($conn, trim($_POST['question']));
+    $theme = mysqli_real_escape_string($conn, trim($_POST['theme']));
+    $r1 = mysqli_real_escape_string($conn, trim($_POST['reponse1']));
+    $r2 = mysqli_real_escape_string($conn, trim($_POST['reponse2']));
+    $r3 = mysqli_real_escape_string($conn, trim($_POST['reponse3']));
+    $r4 = mysqli_real_escape_string($conn, trim($_POST['reponse4']));
     $bonne_reponse = (int)$_POST['bonne_reponse']; 
 
-    $stmt = $db->prepare("INSERT INTO questions (enonce) VALUES (?)");
-    $stmt->execute([$enonce]);
-    $id_question = $db->lastInsertId();
-
-    foreach ($reponses as $index => $texte) {
-        $est_correcte = ($index === $bonne_reponse) ? 1 : 0;
-        $stmtRep = $db->prepare("INSERT INTO reponses (id_question, texte_reponse, est_correcte) VALUES (?, ?, ?)");
-        $stmtRep->execute([$id_question, trim($texte), $est_correcte]);
+    $sql = "INSERT INTO questions (question, theme, reponse1, reponse2, reponse3, reponse4, bonne_reponse) 
+            VALUES ('$question', '$theme', '$r1', '$r2', '$r3', '$r4', $bonne_reponse)";
+            
+    if (mysqli_query($conn, $sql)) {
+        $_SESSION['msg_success'] = "Question ajoutée avec succès.";
     }
-    $message_success = "Question ajoutée avec succès.";
+    header("Location: admin.php");
+    exit();
 }
 
-// Modifier une question (9.2)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['modifier_question'])) {
+// ACTION AJOUTÉE / MODIFIÉE : Modifier entièrement une question en ligne (Exigence du PDF)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['modifier_complete_question'])) {
     $id_question = (int)$_POST['id_question'];
-    $enonce = trim($_POST['enonce']);
-    $reponses = $_POST['reponses']; // Tableau [id_reponse => texte]
-    $bonne_reponse_id = (int)$_POST['bonne_reponse_id']; // ID de la réponse correcte cochee
-
-    // Mettre à jour l'énoncé
-    $stmt = $db->prepare("UPDATE questions SET enonce = ? WHERE id_question = ?");
-    $stmt->execute([$enonce, $id_question]);
-
-    // Mettre à jour les réponses
-    foreach ($reponses as $id_reponse => $texte) {
-        $est_correcte = ($id_reponse === $bonne_reponse_id) ? 1 : 0;
-        $stmtRep = $db->prepare("UPDATE reponses SET texte_reponse = ?, est_correcte = ? WHERE id_reponse = ?");
-        $stmtRep->execute([trim($texte), $est_correcte, $id_reponse]);
+    $question = mysqli_real_escape_string($conn, trim($_POST['question']));
+    $theme = mysqli_real_escape_string($conn, trim($_POST['theme']));
+    
+    $sql = "UPDATE questions SET question = '$question', theme = '$theme' WHERE id = $id_question";
+    if (mysqli_query($conn, $sql)) {
+        $_SESSION['msg_success'] = "La question et son thème ont été modifiés avec succès.";
     }
-    $message_success = "Question mise à jour avec succès.";
+    header("Location: admin.php");
+    exit();
 }
 
-// Supprimer une question (9.2)
+// Supprimer une question
 if (isset($_GET['action']) && $_GET['action'] === 'suppr_question') {
     $id = (int)$_GET['id'];
-    $stmt = $db->prepare("DELETE FROM questions WHERE id_question = ?");
-    $stmt->execute([$id]);
-    $message_success = "Question supprimée avec succès.";
-}
-
-// Récupération des données pour l'affichage
-$utilisateurs = $db->query("SELECT * FROM utilisateurs ORDER BY nom ASC")->fetchAll(PDO::FETCH_ASSOC);
-$questions = $db->query("SELECT * FROM questions ORDER BY id_question DESC")->fetchAll(PDO::FETCH_ASSOC);
-
-// Mode édition d'une question
-$question_en_cours_edition = null;
-$reponses_en_cours_edition = [];
-if (isset($_GET['action']) && $_GET['action'] === 'edit_question') {
-    $id_edit = (int)$_GET['id'];
-    $stmt = $db->prepare("SELECT * FROM questions WHERE id_question = ?");
-    $stmt->execute([$id_edit]);
-    $question_en_cours_edition = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if ($question_en_cours_edition) {
-        $stmtRep = $db->prepare("SELECT * FROM reponses WHERE id_question = ?");
-        $stmtRep->execute([$id_edit]);
-        $reponses_en_cours_edition = $stmtRep->fetchAll(PDO::FETCH_ASSOC);
+    $sql = "DELETE FROM questions WHERE id = $id";
+    if (mysqli_query($conn, $sql)) {
+        $_SESSION['msg_success'] = "Question supprimée avec succès.";
     }
+    header("Location: admin.php");
+    exit();
 }
+
+// 4. RÉCUPÉRATION DES DONNÉES
+$resultat_users = mysqli_query($conn, "SELECT * FROM utilisateurs ORDER BY nom ASC");
+$utilisateurs = [];
+while ($row = mysqli_fetch_assoc($resultat_users)) { $utilisateurs[] = $row; }
+
+$resultat_questions = mysqli_query($conn, "SELECT * FROM questions ORDER BY id DESC");
+$questions = [];
+while ($row = mysqli_fetch_assoc($resultat_questions)) { $questions[] = $row; }
+
+$resultat_themes = mysqli_query($conn, "SELECT DISTINCT theme FROM questions WHERE theme != '' AND theme IS NOT NULL ORDER BY theme ASC");
+$themes_existants = [];
+while ($row = mysqli_fetch_assoc($resultat_themes)) { $themes_existants[] = $row['theme']; }
+
+mysqli_close($conn);
 ?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>9. Interface Administrateur</title>
+    <title>Administration - QCM</title>
     <style>
         body { font-family: Arial, sans-serif; background: #f4f6f9; padding: 20px; color: #333; }
-        .container { max-width: 1000px; margin: 0 auto; }
-        .box { background: white; padding: 25px; margin-bottom: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-        h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
-        h2 { color: #2980b9; margin-top: 0; border-bottom: 2px solid #ecf0f1; padding-bottom: 8px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #fff; }
-        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background: #f8f9fa; }
-        input[type="text"], textarea { width: 100%; padding: 10px; margin: 5px 0 15px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
-        button { background: #3498db; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 4px; font-weight: bold; }
-        button:hover { background: #2980b9; }
-        .btn-action { padding: 5px 10px; color: white; text-decoration: none; border-radius: 4px; font-size: 0.85em; font-weight: bold; margin-right: 5px; }
-        .btn-danger { background: #e74c3c; } .btn-danger:hover { background: #c0392b; }
-        .btn-warning { background: #f39c12; } .btn-warning:hover { background: #d35400; }
-        .btn-success { background: #2ecc71; } .btn-success:hover { background: #27ae60; }
-        .alert-success { background: #d4edda; color: #155724; padding: 15px; border-radius: 5px; margin-bottom: 20px; font-weight: bold; }
-        .radio-group { display: flex; align-items: center; margin-bottom: 8px; }
-        .radio-group input[type="radio"] { margin-right: 10px; }
+        .admin-container { max-width: 1200px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow:0 2px 10px rgba(0,0,0,0.1); }
+        .nav-admin { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; background: #34495e; padding: 15px; border-radius: 6px; color: white; }
+        .nav-admin a { color: #fff; text-decoration: none; background: #e74c3c; padding: 8px 15px; border-radius: 4px; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 40px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; vertical-align: middle; }
+        th { background-color: #f2f2f2; }
+        .btn-action { padding: 6px 12px; text-decoration: none; border-radius: 4px; color: white; font-size: 0.85em; display: inline-block; margin-right: 5px; font-weight: bold;}
+        .btn-danger { background-color: #e74c3c; }
+        .btn-danger:hover { background-color: #c0392b; }
+        .btn-role { background-color: #3498db; }
+        .btn-role:hover { background-color: #2980b9; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], textarea, select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button.btn-add { background: #2ecc71; color: white; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button.btn-add:hover { background: #27ae60; }
+        .edit-input { padding: 6px; font-size: 0.9em; margin-bottom: 5px; display: block; width: 100%; }
+        .btn-save-inline { background: #2c3e50; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>9. Interface Administrateur</h1>
-    <p style="text-align: right;"><a href="connexion.php?action=logout" style="color:red; font-weight:bold;">Se déconnecter</a></p>
+<div class="admin-container">
+    <div class="nav-admin">
+        <span>Connecté : <strong><?php echo htmlspecialchars($_SESSION['user_email']); ?></strong> (Rôle : <?php echo $_SESSION['user_role']; ?>)</span>
+        <a href="acceuil.php">Retour au site</a>
+    </div>
 
+    <h1>Espace Administration</h1>
+    
     <?php if (!empty($message_success)): ?>
-        <div class="alert-success"><?php echo $message_success; ?></div>
+        <div style="background: #d4edda; color: #155724; padding: 15px; margin-bottom: 20px; border-radius:4px; font-weight: bold;">
+            <?php echo $message_success; ?>
+        </div>
     <?php endif; ?>
 
-    <div class="box">
-        <h2>9.1 Gestion des utilisateurs</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Nom / Prénom</th>
-                    <th>Email</th>
-                    <th>Statut</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($utilisateurs as $user): ?>
-                <tr>
-                    <td><?php echo htmlspecialchars($user['nom'] . ' ' . $user['prenom']); ?></td>
-                    <td><?php echo htmlspecialchars($user['email']); ?></td>
-                    <td>
-                        <?php echo ($user['est_bloque'] == 1) ? "<span style='color:red;font-weight:bold;'>Bloqué</span>" : "<span style='color:green;'>Actif</span>"; ?>
-                    </td>
-                    <td>
-                        <?php if ($user['est_bloque'] == 1): ?>
-                            <a class="btn-action btn-success" href="admin.php?action=toggle_block&id=<?php echo $user['id_utilisateur']; ?>&status=0">Débloquer</a>
-                        <?php else: ?>
-                            <a class="btn-action btn-warning" href="admin.php?action=toggle_block&id=<?php echo $user['id_utilisateur']; ?>&status=1" onclick="return confirm('Bloquer cet utilisateur ? Il ne pourra plus se connecter.');">Bloquer</a>
-                        <?php endif; ?>
+    <h2>Gestion des utilisateurs (Modifier rôles / Supprimer)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Nom / Prénom</th>
+                <th>Email</th>
+                <th>Rôle actuel</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($utilisateurs as $u): ?>
+            <tr>
+                <td><?php echo htmlspecialchars($u['nom'] . ' ' . $u['prenom']); ?></td>
+                <td><?php echo htmlspecialchars($u['email']); ?></td>
+                <td><span style="text-transform: uppercase; font-weight: bold; color: <?php echo ($u['role'] === 'admin') ? '#e44d26' : '#555'; ?>"><?php echo htmlspecialchars($u['role']); ?></span></td>
+                <td>
+                    <a class="btn-action btn-role" href="admin.php?action=changer_role&id=<?php echo $u['id']; ?>&role=<?php echo $u['role']; ?>">Inverser Rôle</a>
+                    <a class="btn-action btn-danger" href="admin.php?action=suppr_user&id=<?php echo $u['id']; ?>" onclick="return confirm('Supprimer cet utilisateur ?');">Supprimer</a>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
 
-                        <a class="btn-action btn-danger" href="admin.php?action=suppr_user&id=<?php echo $user['id_utilisateur']; ?> onclick="return confirm('Supprimer définitivement cet utilisateur ?');">Supprimer</a>
-                    </td>
-                </tr>
+    <h2>Ajouter une question</h2>
+    <form action="admin.php" method="POST">
+        <div class="form-group">
+            <label>Énoncé de la question :</label>
+            <textarea name="question" required placeholder="Exemple : Quelle fonction trie un tableau en PHP ?"></textarea>
+        </div>
+        <div class="form-group">
+            <label>Thème de la question :</label>
+            <input type="text" name="theme" list="themes_list" required placeholder="Exemple : PHP, HTML, CSS..." autocomplete="off">
+            <datalist id="themes_list">
+                <?php foreach ($themes_existants as $t): ?>
+                    <option value="<?php echo htmlspecialchars($t); ?>">
                 <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
+            </datalist>
+        </div>
+        <div class="form-group"><label>Option 1 :</label><input type="text" name="reponse1" required></div>
+        <div class="form-group"><label>Option 2 :</label><input type="text" name="reponse2" required></div>
+        <div class="form-group"><label>Option 3 :</label><input type="text" name="reponse3" required></div>
+        <div class="form-group"><label>Option 4 :</label><input type="text" name="reponse4" required></div>
+        <div class="form-group">
+            <label>Numéro de la bonne réponse :</label>
+            <select name="bonne_reponse">
+                <option value="1">Réponse 1</option>
+                <option value="2">Réponse 2</option>
+                <option value="3">Réponse 3</option>
+                <option value="4">Réponse 4</option>
+            </select>
+        </div>
+        <button type="submit" name="ajouter_question" class="btn-add">Ajouter la question</button>
+    </form>
 
-    <div class="box">
-        <h2>9.2 Gestion des questions</h2>
-
-        <?php if ($question_en_cours_edition): ?>
-            <h3 style="color: #f39c12;">Modifier la question ID #<?php echo $question_en_cours_edition['id_question']; ?></h3>
-            <form action="admin.php" method="POST">
-                <input type="hidden" name="id_question" value="<?php echo $question_en_cours_edition['id_question']; ?>">
-                
-                <label>Texte de la question :</label>
-                <textarea name="enonce" required><?php echo htmlspecialchars($question_en_cours_edition['enonce']); ?></textarea>
-
-                <label>Modifiez les 4 réponses (Sélectionnez la bonne) :</label>
-                <?php foreach ($reponses_en_cours_edition as $r): ?>
-                    <div class="radio-group">
-                        <input type="radio" name="bonne_reponse_id" value="<?php echo $r['id_reponse']; ?>" <?php echo ($r['est_correcte'] == 1) ? 'checked' : ''; ?>>
-                        <input type="text" name="reponses[<?php echo $r['id_reponse']; ?>]" value="<?php echo htmlspecialchars($r['texte_reponse']); ?>" required>
-                    </div>
-                <?php endforeach; ?>
-
-                <button type="submit" name="modifier_question" style="background:#f39c12;">Enregistrer les modifications</button>
-                <a href="admin.php" style="margin-left:10px; color:#555;">Annuler</a>
-            </form>
-        <?php else: ?>
-            <h3>Ajouter une nouvelle question</h3>
-            <form action="admin.php" method="POST">
-                <label>Texte de la question :</label>
-                <textarea name="enonce" placeholder="Ex: Quel protocole chiffre le web ?" required></textarea>
-
-                <label>Les 4 réponses possibles (Cochez la case ronde pour la réponse correcte) :</label>
-                <?php for($i=0; $i<4; $i++): ?>
-                    <div class="radio-group">
-                        <input type="radio" name="bonne_reponse" value="<?php echo $i; ?>" <?php echo ($i === 0) ? 'checked' : ''; ?>>
-                        <input type="text" name="reponses[]" placeholder="Option de réponse <?php echo $i+1; ?>" required>
-                    </div>
-                <?php endfor; ?>
-
-                <button type="submit" name="ajouter_question">Ajouter la question</button>
-            </form>
-        <?php endif; ?>
-
-        <h3 style="margin-top:40px; border-top: 1px solid #ddd; padding-top:20px;">Questions enregistrées</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>Question</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($questions as $q): ?>
-                <tr>
-                    <td><?php echo htmlspecialchars($q['enonce']); ?></td>
-                    <td>
-                        <a class="btn-action btn-warning" href="admin.php?action=edit_question&id=<?php echo $q['id_question']; ?>">Modifier</a>
-                        <a class="btn-action btn-danger" href="admin.php?action=suppr_question&id=<?php echo $q['id_question']; ?>" onclick="return confirm('Voulez-vous supprimer cette question ainsi que ses réponses ?');">Supprimer</a>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
+    <h2 style="margin-top: 40px;">Questions enregistrées (Modifier / Supprimer)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 20%;">Thème</th>
+                <th style="width: 65%;">Énoncé de la question</th>
+                <th style="width: 15%;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($questions as $q): ?>
+            <tr>
+                <td colspan="2">
+                    <form action="admin.php" method="POST" style="display: block; width:100%;">
+                        <input type="hidden" name="id_question" value="<?php echo $q['id']; ?>">
+                        
+                        <label style="font-size: 0.8em; color: #777;">Thème :</label>
+                        <input type="text" name="theme" class="edit-input" value="<?php echo htmlspecialchars($q['theme']); ?>" required>
+                        
+                        <label style="font-size: 0.8em; color: #777;">Énoncé :</label>
+                        <textarea name="question" class="edit-input" rows="2" required><?php echo htmlspecialchars($q['question']); ?></textarea>
+                        
+                        <button type="submit" name="modifier_complete_question" class="btn-save-inline">💾 Enregistrer les modifications</button>
+                    </form>
+                </td>
+                <td>
+                    <a style="margin-top: 25px;" class="btn-action btn-danger" href="admin.php?action=suppr_question&id=<?php echo $q['id']; ?>" onclick="return confirm('Supprimer cette question ?');">Supprimer</a>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
 </div>
 
 </body>
-</html>
+</html> 
